@@ -444,96 +444,57 @@ public class SCPLogViewer {
         if (searchTerm.isEmpty())
             return;
 
-        JTextArea textArea = currentTab.textArea;
-        String text = textArea.getText();
-        int caretPos = textArea.getCaretPosition();
-        int textLength = text.length();
+        // Use SwingWorker for search to prevent UI lag
+        SwingWorker<Integer, Void> worker = new SwingWorker<Integer, Void>() {
+            @Override
+            protected Integer doInBackground() {
+                JTextArea textArea = currentTab.textArea;
+                String text = textArea.getText();
+                int caretPos = textArea.getCaretPosition();
+                int textLength = text.length();
 
-        // Adjust search conditions based on match case
-        boolean caseSensitive = caseSensitiveBox.isSelected();
-        String searchText = caseSensitive ? text : text.toLowerCase();
-        String searchQuery = caseSensitive ? searchTerm : searchTerm.toLowerCase();
+                boolean caseSensitive = caseSensitiveBox.isSelected();
+                String searchText = caseSensitive ? text : text.toLowerCase();
+                String searchQuery = caseSensitive ? searchTerm : searchTerm.toLowerCase();
 
-        try {
-            int foundPos = -1;
-            if (searchUp) {
-                // Search backwards
-                int startSearchPos = caretPos - 1;
-                while (startSearchPos >= 0) {
+                int foundPos = -1;
+                if (searchUp) {
+                    int startSearchPos = caretPos - 1;
                     foundPos = searchText.lastIndexOf(searchQuery, startSearchPos);
 
-                    // If found and it's a different position from the current selection
-                    if (foundPos != -1 && foundPos != textArea.getSelectionStart()) {
-                        textArea.setCaretPosition(foundPos + searchQuery.length());
-                        textArea.select(foundPos, foundPos + searchQuery.length());
-                        textArea.requestFocusInWindow();
-                        return;
+                    if (foundPos == -1 && wrapAroundCheckBox.isSelected()) {
+                        foundPos = searchText.lastIndexOf(searchQuery);
                     }
-
-                    // Continue searching backwards
-                    startSearchPos = foundPos - 1;
-                }
-
-                // If wrap around is checked, search from the end
-                if (wrapAroundCheckBox.isSelected()) {
-                    startSearchPos = textLength - 1;
-                    while (startSearchPos >= caretPos) {
-                        foundPos = searchText.lastIndexOf(searchQuery, startSearchPos);
-
-                        if (foundPos != -1) {
-                            textArea.setCaretPosition(foundPos);
-                            textArea.select(foundPos, foundPos + searchQuery.length());
-                            textArea.requestFocusInWindow();
-                            return;
-                        }
-
-                        startSearchPos = foundPos - 1;
-                    }
-                }
-
-                // If no occurrence found
-                JOptionPane.showMessageDialog(null, "Text not found");
-            } else {
-                // Search forwards
-                int startSearchPos = caretPos + 1;
-                while (startSearchPos < textLength) {
+                } else {
+                    int startSearchPos = caretPos + 1;
                     foundPos = searchText.indexOf(searchQuery, startSearchPos);
 
-                    // If found and it's a different position from the current selection
-                    if (foundPos != -1 && foundPos != textArea.getSelectionEnd()) {
-                        textArea.setCaretPosition(foundPos);
-                        textArea.select(foundPos, foundPos + searchQuery.length());
-                        textArea.requestFocusInWindow();
-                        return;
-                    }
-
-                    // Continue searching forwards
-                    startSearchPos = foundPos + 1;
-                }
-
-                // If wrap around is checked, search from the beginning
-                if (wrapAroundCheckBox.isSelected()) {
-                    startSearchPos = 0;
-                    while (startSearchPos < caretPos) {
-                        foundPos = searchText.indexOf(searchQuery, startSearchPos);
-
-                        if (foundPos != -1) {
-                            textArea.setCaretPosition(foundPos);
-                            textArea.select(foundPos, foundPos + searchQuery.length());
-                            textArea.requestFocusInWindow();
-                            return;
-                        }
-
-                        startSearchPos = foundPos + 1;
+                    if (foundPos == -1 && wrapAroundCheckBox.isSelected()) {
+                        foundPos = searchText.indexOf(searchQuery);
                     }
                 }
 
-                // If no occurrence found
-                JOptionPane.showMessageDialog(null, "Text not found");
+                return foundPos;
             }
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(null, "Search error: " + e.getMessage());
-        }
+
+            @Override
+            protected void done() {
+                try {
+                    int foundPos = get();
+                    if (foundPos != -1) {
+                        currentTab.textArea.setCaretPosition(foundPos);
+                        currentTab.textArea.select(foundPos, foundPos + searchTerm.length());
+                        currentTab.textArea.requestFocusInWindow();
+                    } else {
+                        JOptionPane.showMessageDialog(null, "Text not found");
+                    }
+                } catch (Exception e) {
+                    JOptionPane.showMessageDialog(null, "Search error: " + e.getMessage());
+                }
+            }
+        };
+
+        worker.execute();
     }
 
     private static TabInfo getCurrentTab() {
@@ -613,7 +574,39 @@ public class SCPLogViewer {
     }
 
     private static void appendToLog(TabInfo tabInfo, String content) {
-        appendToLogWithFiltering(tabInfo, content, true);
+        SwingUtilities.invokeLater(() -> {
+            if (!content.contains("JNI_OnLoad called")) {
+                String formattedContent;
+                // Check if content already has a timestamp
+                if (content.matches("\\[\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\].*")) {
+                    formattedContent = content.replace("\r", "") + "\n";
+                } else {
+                    String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+                    formattedContent = String.format("[%s] %s\n", timestamp, content.trim().replace("\r", ""));
+                }
+
+                // Handle HTML special characters
+                String escapedContent = formattedContent
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace("\"", "&quot;")
+                    .replace("'", "&#39;");
+
+                tabInfo.textArea.append(escapedContent);
+
+                if (tabInfo.rawLogContent == null) {
+                    tabInfo.rawLogContent = new StringBuilder();
+                }
+                tabInfo.rawLogContent.append(escapedContent);
+
+                try {
+                    tabInfo.textArea.setCaretPosition(tabInfo.textArea.getDocument().getLength());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        });
     }
 
     private static void appendToLogWithFiltering(TabInfo tabInfo, String content, boolean addToRaw) {
@@ -655,6 +648,10 @@ public class SCPLogViewer {
         SwingUtilities.invokeLater(() -> {
             tabInfo.textArea.setText("");
             tabInfo.lastContent = "";
+            // Clear raw content as well
+            tabInfo.rawLogContent = new StringBuilder();
+            // Reset caret position
+            tabInfo.textArea.setCaretPosition(0);
         });
     }
 
@@ -677,7 +674,7 @@ public class SCPLogViewer {
             channel = (ChannelExec) session.openChannel("exec");
             channel.setCommand("test -f " + tabInfo.logFile + " && echo 'EXISTS' || echo 'NOT_FOUND'");
 
-            reader = new BufferedReader(new InputStreamReader(channel.getInputStream()));
+            reader = new BufferedReader(new InputStreamReader(channel.getInputStream(), StandardCharsets.UTF_8));
             channel.connect();
 
             String fileExists = reader.readLine();
@@ -691,7 +688,7 @@ public class SCPLogViewer {
             channel = (ChannelExec) session.openChannel("exec");
             channel.setCommand("wc -c < " + tabInfo.logFile);
 
-            reader = new BufferedReader(new InputStreamReader(channel.getInputStream()));
+            reader = new BufferedReader(new InputStreamReader(channel.getInputStream(), StandardCharsets.UTF_8));
             channel.connect();
 
             String fileSizeStr = reader.readLine();
@@ -702,32 +699,34 @@ public class SCPLogViewer {
                 return;
             }
 
-            // Read new content
+            // Read new content using base64 encoding to preserve special characters
             channel.disconnect();
             channel = (ChannelExec) session.openChannel("exec");
 
             String command;
             if (tabInfo.lastModified == 0) {
-                command = "cat " + tabInfo.logFile;
+                command = "base64 " + tabInfo.logFile;
             } else {
                 long bytesToRead = currentSize - tabInfo.lastModified;
-                command = String.format("tail -c %d %s", bytesToRead, tabInfo.logFile);
+                command = String.format("tail -c %d %s | base64", bytesToRead, tabInfo.logFile);
             }
 
             channel.setCommand(command);
-            reader = new BufferedReader(new InputStreamReader(channel.getInputStream()));
+            reader = new BufferedReader(new InputStreamReader(channel.getInputStream(), StandardCharsets.UTF_8));
             channel.connect();
 
+            StringBuilder base64Content = new StringBuilder();
             String line;
-            StringBuilder newContent = new StringBuilder();
             while ((line = reader.readLine()) != null) {
-                if (!line.trim().isEmpty()) {
-                    newContent.append(line).append("\n");
-                }
+                base64Content.append(line);
             }
 
-            if (newContent.length() > 0) {
-                String[] lines = newContent.toString().split("\n");
+            // Decode base64 content
+            byte[] decodedBytes = Base64.getDecoder().decode(base64Content.toString());
+            String decodedContent = new String(decodedBytes, StandardCharsets.UTF_8);
+
+            if (!decodedContent.isEmpty()) {
+                String[] lines = decodedContent.split("\n");
                 for (String logLine : lines) {
                     if (!logLine.trim().isEmpty() && !logLine.contains("JNI_OnLoad called")) {
                         appendToLog(tabInfo, logLine);
@@ -830,6 +829,11 @@ public class SCPLogViewer {
         styleButton(toggleDuplicatesButton);
         toggleDuplicatesButton.addActionListener(e -> toggleDuplicateFiltering());
         toolbar.add(toggleDuplicatesButton);
+
+        JButton wordWrapButton = new JButton("Word Wrap");
+        styleButton(wordWrapButton);
+        wordWrapButton.addActionListener(e -> toggleWordWrap(wordWrapButton));
+        toolbar.add(wordWrapButton);
 
         return toolbar;
     }
@@ -1133,11 +1137,15 @@ public class SCPLogViewer {
             session.connect(30000);
 
             channel = (ChannelExec) session.openChannel("exec");
-            channel.setCommand("echo '' > " + tabInfo.logFile);
+            channel.setCommand("truncate -s 0 " + tabInfo.logFile);
             channel.connect();
 
+            // Clear all content including raw content
             tabInfo.textArea.setText("");
             tabInfo.lastContent = "";
+            tabInfo.rawLogContent = new StringBuilder();
+            tabInfo.lastModified = 0;
+            tabInfo.textArea.setCaretPosition(0);
 
             updateStatus(tabInfo, true, "Log cleared");
         } catch (Exception e) {
@@ -1146,12 +1154,10 @@ public class SCPLogViewer {
             if (channel != null) {
                 channel.disconnect();
             }
-
             if (session != null) {
                 session.disconnect();
             }
         }
-
     }
 
     private static void exportLog() {
@@ -1245,9 +1251,9 @@ public class SCPLogViewer {
 
         currentTab.filterDuplicates = !currentTab.filterDuplicates;
 
-        // Clear and reprocess all content
-        currentTab.textArea.setText("");
-        if (currentTab.rawLogContent != null) {
+        // Only reprocess if there's content
+        if (currentTab.rawLogContent != null && currentTab.rawLogContent.length() > 0) {
+            currentTab.textArea.setText("");
             String[] lines = currentTab.rawLogContent.toString().split("\n");
             for (String line : lines) {
                 if (!line.trim().isEmpty()) {
@@ -1256,12 +1262,34 @@ public class SCPLogViewer {
             }
         }
 
-        // Update button text to show current state
-        for (Component comp : ((JToolBar) tabbedPane.getParent().getParent()).getComponents()) {
-            if (comp instanceof JButton && ((JButton) comp).getText().contains("Duplicates")) {
-                ((JButton) comp).setText(currentTab.filterDuplicates ? "Show Duplicates" : "Filter Duplicates");
-                break;
+        // Find and update the toggle button in the toolbar
+        Window window = SwingUtilities.getWindowAncestor(tabbedPane);
+        if (window instanceof JFrame) {
+            JFrame frame = (JFrame) window;
+            for (Component comp : frame.getContentPane().getComponents()) {
+                if (comp instanceof JToolBar) {
+                    JToolBar toolbar = (JToolBar) comp;
+                    for (Component button : toolbar.getComponents()) {
+                        if (button instanceof JButton &&
+                            (((JButton) button).getText().contains("Duplicates"))) {
+                            ((JButton) button).setText(currentTab.filterDuplicates ?
+                                "Show Duplicates" : "Filter Duplicates");
+                            break;
+                        }
+                    }
+                    break;
+                }
             }
         }
+    }
+
+    private static void toggleWordWrap(JButton wordWrapButton) {
+        TabInfo currentTab = getCurrentTab();
+        if (currentTab == null) return;
+
+        boolean isWrapped = !currentTab.textArea.getLineWrap();
+        currentTab.textArea.setLineWrap(isWrapped);
+        currentTab.textArea.setWrapStyleWord(isWrapped);
+        wordWrapButton.setText(isWrapped ? "Disable Wrap" : "Word Wrap");
     }
 }
