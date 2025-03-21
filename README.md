@@ -5,7 +5,7 @@ A Java-based real-time log monitoring application that allows you to view and tr
 ## Features
 
 - **Multi-Tab Support**: Monitor multiple log files simultaneously in different tabs
-- **Real-time Monitoring**: Automatic refresh every 2 seconds to show live log updates
+- **Real-time Monitoring**: Automatic refresh to show live log updates
 - **SSH/SCP Integration**: Secure connection to remote Linux machines using JSch library
 - **Text Customization**:
   - Adjustable font family, size, and style
@@ -16,14 +16,22 @@ A Java-based real-time log monitoring application that allows you to view and tr
   - Wrap-around search
   - Forward and backward search directions
 - **Log Management**:
-  - Clear log files directly from the interface
+  - Clear log files directly from the interface (supports full clear or bottom-only clear)
   - Export logs with timestamps and connection details
-  - Duplicate line filtering
+  - Duplicate line filtering with configuration persistence
+  - Word wrap option with configuration persistence
+  - Timestamp display toggle
 - **Connection Status**: Real-time connection status and last update time display
 - **User-friendly Interface**:
-  - Intuitive tab management
+  - Intuitive tab management with custom naming
   - Right-click context menu for copy and select operations
   - Customizable UI with dark mode support
+  - Auto-connect feature for tabs
+- **Security Features**:
+  - Password encryption using Base64 encoding with shift cipher
+  - No plain-text password storage
+  - Secure SSH/SCP communication
+- **Special Log Commands**: Support for special escape codes (\u001B[C] and \u001B[CB]) for clearing logs
 
 ## Dependencies
 
@@ -42,17 +50,27 @@ A Java-based real-time log monitoring application that allows you to view and tr
    ```json
    {
      "tabs": [{
-       "textColorRGB": -16777216,
-       "tabName": "Log 1",
-       "fontName": "Monospaced",
-       "backgroundColorRGB": -1,
-       "logFile": "/path/to/your/log",
        "host": "your.host.ip",
+       "port": 22,
+       "user": "username",
+       "password": "encrypted_password",
+       "logFile": "/path/to/your/log",
+       "tabName": "Log 1",
+       "textColorRGB": -16777216,
+       "backgroundColorRGB": -1,
+       "fontName": "Monospaced",
        "fontSize": 12,
        "fontStyle": 0,
-       "user": "username"
+       "wordWrap": false,
+       "filterDuplicates": false,
+       "showTimestamp": true,
+       "autoConnect": false
      }],
-     "darkMode": false
+     "darkMode": false,
+     "globalHost": "localhost",
+     "globalPort": 22,
+     "globalUsername": "",
+     "globalPassword": ""
    }
    ```
 
@@ -71,19 +89,27 @@ A Java-based real-time log monitoring application that allows you to view and tr
    - Customize text appearance
    - Export logs
    - Toggle dark mode
-   - Clear logs
+   - Clear logs (full or bottom-only)
+   - Toggle word wrap
+   - Toggle duplicate filtering
 
 ## Security Features
 
 - SSH key verification
-- Secure password handling
 - No plain-text password storage
 
 ## Keyboard Shortcuts
 
-- **Ctrl+F**: Open search dialog
-- **Ctrl+C**: Copy selected text
-- **Ctrl+A**: Select all text
+- **Ctrl+T**: Create new tab
+- **Ctrl+W**: Close current tab
+- **Alt+Up**: Fast scroll up
+- **Alt+Down**: Fast scroll down
+- **Ctrl+S**: Save current tab settings
+- **F2**: Rename current tab
+- **Ctrl+F**: Show search dialog
+- **Ctrl+E**: Export log
+- **Ctrl+L**: Clear log
+- **Ctrl+Enter**: Save and connect
 
 ## System Requirements
 
